@@ -64,7 +64,7 @@ func getMessage(m model) tea.Cmd {
 		if err != nil {
 			return tea.Quit
 		}
-		return srvMessageMsg(msg)
+		return srvMessageMsg(wordwrap.String(strings.TrimRight(msg, "\n"), vpWidth-5))
 	}
 }
 
@@ -125,15 +125,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Println(m.textarea.Value())
 			return m, tea.Quit
 		case tea.KeyEnter:
-			message := wordwrap.String(m.textarea.Value(), vpWidth-5) + "\n"
-			m.writer.WriteString(fmt.Sprintf("%s: %s", m.username, message))
+			message := m.textarea.Value()
+			m.writer.WriteString(fmt.Sprintf("%s: %s", m.username, message+"\n"))
 
 			err := m.writer.Flush()
 			if err != nil {
 				panic(err)
 			}
 
-			m.messages = append(m.messages, m.senderStyle.Render("You: ")+message)
+			m.messages = append(m.messages, m.senderStyle.Render("You: ")+wordwrap.String(message, vpWidth-5))
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.textarea.Reset()
 			m.viewport.GotoBottom()

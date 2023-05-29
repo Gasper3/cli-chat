@@ -7,10 +7,18 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 )
 
+type clientConn struct {
+	conn     net.Conn
+	writer   bufio.Writer
+	reader   bufio.Reader
+	username string
+}
+
 func RunServer() {
-	clients := make(map[string]net.Conn)
+	clients := make(map[string]clientConn)
 	quit := make(chan int)
 
 	sigChan := make(chan os.Signal, 1)
@@ -30,24 +38,40 @@ func RunServer() {
 		conn, err := listener.Accept()
 		HandleError(err, false)
 		fmt.Println("New connection", conn.RemoteAddr().String())
-		clients[conn.RemoteAddr().String()] = conn
 
-		go func(conn net.Conn) {
+		client := clientConn{conn: conn, writer: *bufio.NewWriter(conn), reader: *bufio.NewReader(conn)}
+		clients[conn.RemoteAddr().String()] = client
+
+		go func(cc clientConn) {
 			for {
-				msg, err := bufio.NewReader(conn).ReadString('\n')
+				msg, err := cc.reader.ReadString('\n')
 				if err != nil {
-					fmt.Println("Client disconnected:", conn.RemoteAddr().String())
+					fmt.Println("Client disconnected:", cc.conn.RemoteAddr().String())
 					return
 				}
+				fmt.Println(fmt.Sprintf("<%s::%s>", cc.conn.RemoteAddr().String(), cc.username), msg)
 
-				fmt.Println("Client msg:", msg)
-				for _, c := range clients {
-					if c != conn {
-						c.Write([]byte(msg))
+				if strings.HasPrefix(msg, "/") {
+					handleCommand(msg, &cc)
+					continue
+				}
+
+				for _, cd := range clients {
+					if cd.conn != cc.conn {
+						cd.writer.WriteString(fmt.Sprintf("%s: %s", strings.Trim(cc.username, "\n"), msg))
+						cd.writer.Flush()
 					}
 				}
 			}
-		}(conn)
+		}(client)
+	}
+}
+
+func handleCommand(cmd string, cc *clientConn) {
+	parsedCmd := strings.Split(strings.TrimLeft(cmd, "/"), "::")
+	switch parsedCmd[0] {
+	case "setusername":
+		cc.username = parsedCmd[1]
 	}
 }
 

@@ -58,16 +58,6 @@ type model struct {
 	err           error
 }
 
-func getMessage(m model) tea.Cmd {
-	return func() tea.Msg {
-		msg, err := m.reader.ReadString('\n')
-		if err != nil {
-			return tea.Quit
-		}
-		return srvMessageMsg(wordwrap.String(strings.TrimRight(msg, "\n"), vpWidth-5))
-	}
-}
-
 func initialModel(username string) model {
 	c, err := ConnectToServer()
 	HandleError(err, false)
@@ -106,6 +96,8 @@ func initialModel(username string) model {
 }
 
 func (m model) Init() tea.Cmd {
+	m.writer.WriteString(fmt.Sprintf("/setusername::%s\n", m.username))
+	m.writer.Flush()
 	return tea.Batch(textarea.Blink, getMessage(m))
 }
 
@@ -126,8 +118,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case tea.KeyEnter:
 			message := m.textarea.Value()
-			m.writer.WriteString(fmt.Sprintf("%s: %s", m.username, message+"\n"))
 
+			m.writer.WriteString(message + "\n")
 			err := m.writer.Flush()
 			if err != nil {
 				panic(err)
@@ -142,7 +134,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg
 		return m, nil
 	case srvMessageMsg:
-		m.messages = append(m.messages, m.receiverStyle.Render(string(msg)))
+		m.messages = append(m.messages, string(msg))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.viewport.GotoBottom()
 	}
@@ -163,4 +155,14 @@ func HandleError(err error, p bool) {
 	}
 	fmt.Println(err)
 	os.Exit(1)
+}
+
+func getMessage(m model) tea.Cmd {
+	return func() tea.Msg {
+		msg, err := m.reader.ReadString('\n')
+		if err != nil {
+			return tea.Quit
+		}
+		return srvMessageMsg(wordwrap.String(strings.TrimRight(msg, "\n"), vpWidth-5))
+	}
 }

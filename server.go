@@ -29,14 +29,14 @@ func RunServer() {
 
 	fmt.Println("Listening on port " + *port)
 	listener, err := net.Listen("tcp", ":"+*port)
-	HandleError(err, false)
+	HandleError(err)
 
 	defer closeListener(&listener)
 	go cleanup(sigChan, quit, &listener)
 
 	for {
 		conn, err := listener.Accept()
-		HandleError(err, false)
+		HandleError(err)
 		fmt.Println("New connection", conn.RemoteAddr().String())
 
 		client := clientConn{conn: conn, writer: *bufio.NewWriter(conn), reader: *bufio.NewReader(conn)}

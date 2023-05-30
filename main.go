@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -60,7 +59,7 @@ type model struct {
 
 func initialModel(username string) model {
 	c, err := ConnectToServer()
-	HandleError(err, false)
+	HandleError(err)
 
 	ta := textarea.New()
 	ta.Placeholder = "Send a message"
@@ -120,9 +119,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			message := m.textarea.Value()
 
 			m.writer.WriteString(message + "\n")
-			err := m.writer.Flush()
-			if err != nil {
-				panic(err)
+			if err := m.writer.Flush(); err != nil {
+				log.Fatal(err)
 			}
 
 			m.messages = append(m.messages, m.senderStyle.Render("You: ")+wordwrap.String(message, vpWidth-5))
@@ -146,15 +144,11 @@ func (m model) View() string {
 	return fmt.Sprintf("%s\n\n%s", m.viewport.View(), m.textarea.View()) + "\n\n"
 }
 
-func HandleError(err error, p bool) {
+func HandleError(err error) {
 	if err == nil {
 		return
 	}
-	if p {
-		panic(err)
-	}
-	fmt.Println(err)
-	os.Exit(1)
+	log.Fatal(err)
 }
 
 func getMessage(m model) tea.Cmd {

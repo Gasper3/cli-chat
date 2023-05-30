@@ -14,7 +14,7 @@ func RunClient() {
 	flag.Parse()
 
 	c, err := net.Dial("tcp", *addr+":"+*port)
-	HandleError(err, false)
+	HandleError(err)
 
 	for {
 		go func(conn net.Conn) {

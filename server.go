@@ -4,17 +4,21 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 type clientConn struct {
-	conn     net.Conn
-	writer   bufio.Writer
-	reader   bufio.Reader
-	username string
+	conn      net.Conn
+	writer    bufio.Writer
+	reader    bufio.Reader
+	username  string
+	sendColor lipgloss.Style
 }
 
 func RunServer() {
@@ -34,12 +38,19 @@ func RunServer() {
 	defer closeListener(&listener)
 	go cleanup(sigChan, quit, &listener)
 
+	colorNr := 1
 	for {
 		conn, err := listener.Accept()
 		HandleError(err)
 		fmt.Println("New connection", conn.RemoteAddr().String())
 
-		client := clientConn{conn: conn, writer: *bufio.NewWriter(conn), reader: *bufio.NewReader(conn)}
+		client := clientConn{
+			conn:      conn,
+			writer:    *bufio.NewWriter(conn),
+			reader:    *bufio.NewReader(conn),
+			sendColor: lipgloss.NewStyle().Foreground(lipgloss.Color(fmt.Sprint(colorNr))),
+		}
+		colorNr++
 		clients[conn.RemoteAddr().String()] = client
 
 		go func(cc clientConn) {
@@ -49,7 +60,7 @@ func RunServer() {
 					fmt.Println("Client disconnected:", cc.conn.RemoteAddr().String())
 					return
 				}
-				fmt.Println(fmt.Sprintf("<%s::%s>", cc.conn.RemoteAddr().String(), cc.username), msg)
+				log.Println(fmt.Sprintf("<%s::%s>", cc.conn.RemoteAddr().String(), cc.username), msg)
 
 				if strings.HasPrefix(msg, "/") {
 					handleCommand(msg, &cc)
@@ -58,7 +69,7 @@ func RunServer() {
 
 				for _, cd := range clients {
 					if cd.conn != cc.conn {
-						cd.writer.WriteString(fmt.Sprintf("%s: %s", strings.Trim(cc.username, "\n"), msg))
+						cd.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username, ":"), msg))
 						cd.writer.Flush()
 					}
 				}
@@ -68,10 +79,10 @@ func RunServer() {
 }
 
 func handleCommand(cmd string, cc *clientConn) {
-	parsedCmd := strings.Split(strings.TrimLeft(cmd, "/"), "::")
+	parsedCmd := strings.Split(cmd, "::")
 	switch parsedCmd[0] {
-	case "setusername":
-		cc.username = parsedCmd[1]
+	case "/setusername":
+		cc.username = strings.Trim(parsedCmd[1], "\n")
 	}
 }
 

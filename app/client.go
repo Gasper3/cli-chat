@@ -62,9 +62,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			message := m.textarea.Value()
 
 			m.writer.WriteString(message + "\n")
-			if err := m.writer.Flush(); err != nil {
-				log.Fatal(err)
-			}
+			err := m.writer.Flush()
+			HandleError(err)
 
 			m.messages = append(m.messages, m.senderStyle.Render("You: ")+wordwrap.String(message, vpWidth-5))
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
@@ -133,10 +132,9 @@ func connectToServer() (net.Conn, error) {
 }
 
 func HandleError(err error) {
-	if err == nil {
-		return
+	if err != nil {
+		log.Fatal(err)
 	}
-	log.Fatal(err)
 }
 
 func getMessage(m model) tea.Cmd {

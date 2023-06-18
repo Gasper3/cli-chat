@@ -21,8 +21,27 @@ type clientConn struct {
 	sendColor lipgloss.Style
 }
 
+type clientLeftError struct {
+	message  string
+	username string
+}
+
+func (e *clientLeftError) Error() string {
+	return fmt.Sprintf("%s left the chat", e.username)
+}
+
+type notEnoughArgs struct {
+	cmdName string
+}
+
+func (e *notEnoughArgs) Error() string {
+	return fmt.Sprintf("Command %s requires argument after '::'", e.cmdName)
+}
+
+type clientsMap map[string]*clientConn
+
 func RunServer() {
-	clients := make(map[string]clientConn)
+	clients := make(clientsMap)
 	quit := make(chan int)
 
 	sigChan := make(chan os.Signal, 1)
@@ -51,39 +70,67 @@ func RunServer() {
 			sendColor: lipgloss.NewStyle().Foreground(lipgloss.Color(fmt.Sprint(colorNr))),
 		}
 		colorNr++
-		clients[conn.RemoteAddr().String()] = client
+		clients[conn.RemoteAddr().String()] = &client
 
-		go func(cc clientConn) {
-			for {
-				msg, err := cc.reader.ReadString('\n')
-				if err != nil {
-					fmt.Println("Client disconnected:", cc.conn.RemoteAddr().String())
-					return
-				}
-				log.Println(fmt.Sprintf("<%s::%s>", cc.conn.RemoteAddr().String(), cc.username), msg)
-
-				if strings.HasPrefix(msg, "/") {
-					handleCommand(msg, &cc)
-					continue
-				}
-
-				for _, cd := range clients {
-					if cd.conn != cc.conn {
-						cd.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username, ":"), msg))
-						cd.writer.Flush()
-					}
-				}
-			}
-		}(client)
+		go handleClientConnection(&client, &clients)
 	}
 }
 
-func handleCommand(cmd string, cc *clientConn) {
-	parsedCmd := strings.Split(cmd, "::")
-	switch parsedCmd[0] {
-	case "/setusername":
-		cc.username = strings.Trim(parsedCmd[1], "\n")
+func handleClientConnection(cc *clientConn, clients *clientsMap) {
+	for {
+		msg, err := cc.reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Client disconnected:", cc.conn.RemoteAddr().String())
+			delete(*clients, cc.conn.RemoteAddr().String())
+			return
+		}
+		log.Println(fmt.Sprintf("<%s::%s>", cc.conn.RemoteAddr().String(), cc.username), msg)
+
+		if strings.HasPrefix(msg, "/") {
+			fmt.Println("handleClient", &cc)
+			err := handleCommand(msg, cc)
+			if e, ok := err.(*clientLeftError); ok {
+				delete(*clients, cc.conn.RemoteAddr().String())
+				broadcastMessage(*cc, *clients, e.message)
+				return
+			}
+			continue
+		}
+
+		broadcastMessage(*cc, *clients, msg)
 	}
+}
+
+func broadcastMessage(cc clientConn, clients clientsMap, msg string) {
+	for _, c := range clients {
+		if c.conn != cc.conn {
+			c.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username, ":"), msg))
+			err := c.writer.Flush()
+			HandleError(err)
+		}
+	}
+}
+
+func handleCommand(cmd string, cc *clientConn) error {
+	cmdSlice := strings.Split(cmd, "::")
+	var parsedCmd []string
+	for _, s := range cmdSlice {
+		parsedCmd = append(parsedCmd, strings.Trim(s, "\n"))
+	}
+	cmdName := parsedCmd[0]
+	args := parsedCmd[1:]
+
+	switch cmdName {
+	case "/setusername":
+		if len(parsedCmd) == 1 {
+			return &notEnoughArgs{cmdName: cmdName}
+		}
+		cc.username = args[0]
+		return nil
+	case "/leave":
+		return &clientLeftError{username: cc.username}
+	}
+	return nil
 }
 
 func closeListener(l *net.Listener) {
@@ -92,9 +139,8 @@ func closeListener(l *net.Listener) {
 }
 
 func cleanup(c chan os.Signal, quit chan int, listener *net.Listener) {
-	for range c {
-		fmt.Println("\nExiting...")
-		(*listener).Close()
-		os.Exit(0)
-	}
+	<-c
+	fmt.Println("\nExiting...")
+	(*listener).Close()
+	os.Exit(0)
 }

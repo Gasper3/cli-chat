@@ -2,9 +2,9 @@ package app
 
 import (
 	"bufio"
+	"chat-app/utils"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 
@@ -63,7 +63,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.writer.WriteString(message + "\n")
 			err := m.writer.Flush()
-			HandleError(err)
+			utils.HandleError(err)
 
 			m.messages = append(m.messages, m.senderStyle.Render("You: ")+wordwrap.String(message, vpWidth-5))
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
@@ -88,7 +88,7 @@ func (m model) View() string {
 
 func InitialModel(username string) model {
 	c, err := connectToServer()
-	HandleError(err)
+	utils.HandleError(err)
 
 	ta := textarea.New()
 	ta.Placeholder = "Send a message"
@@ -129,12 +129,6 @@ func connectToServer() (net.Conn, error) {
 	flag.Parse()
 
 	return net.Dial("tcp", *addr+":"+*port)
-}
-
-func HandleError(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
 }
 
 func getMessage(m model) tea.Cmd {

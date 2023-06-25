@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"chat-app/utils"
 	"flag"
 	"fmt"
 	"log"
@@ -21,23 +22,6 @@ type clientConn struct {
 	sendColor lipgloss.Style
 }
 
-type clientLeftError struct {
-	message  string
-	username string
-}
-
-func (e *clientLeftError) Error() string {
-	return fmt.Sprintf("%s left the chat", e.username)
-}
-
-type notEnoughArgs struct {
-	cmdName string
-}
-
-func (e *notEnoughArgs) Error() string {
-	return fmt.Sprintf("Command %s requires argument after '::'", e.cmdName)
-}
-
 type clientsMap map[string]*clientConn
 
 func RunServer() {
@@ -52,7 +36,7 @@ func RunServer() {
 
 	fmt.Println("Listening on port " + *port)
 	listener, err := net.Listen("tcp", ":"+*port)
-	HandleError(err)
+	utils.HandleError(err)
 
 	defer closeListener(&listener)
 	go cleanup(sigChan, quit, &listener)
@@ -60,7 +44,7 @@ func RunServer() {
 	colorNr := 1
 	for {
 		conn, err := listener.Accept()
-		HandleError(err)
+		utils.HandleError(err)
 		fmt.Println("New connection", conn.RemoteAddr().String())
 
 		client := clientConn{
@@ -89,9 +73,9 @@ func handleClientConnection(cc *clientConn, clients *clientsMap) {
 		if strings.HasPrefix(msg, "/") {
 			fmt.Println("handleClient", &cc)
 			err := handleCommand(msg, cc)
-			if e, ok := err.(*clientLeftError); ok {
+			if e, ok := err.(*utils.ClientLeftError); ok {
 				delete(*clients, cc.conn.RemoteAddr().String())
-				broadcastMessage(*cc, *clients, e.message)
+				broadcastMessage(*cc, *clients, fmt.Sprint(e))
 				return
 			}
 			continue
@@ -106,7 +90,7 @@ func broadcastMessage(cc clientConn, clients clientsMap, msg string) {
 		if c.conn != cc.conn {
 			c.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username, ":"), msg))
 			err := c.writer.Flush()
-			HandleError(err)
+			utils.HandleError(err)
 		}
 	}
 }
@@ -123,12 +107,12 @@ func handleCommand(cmd string, cc *clientConn) error {
 	switch cmdName {
 	case "/setusername":
 		if len(parsedCmd) == 1 {
-			return &notEnoughArgs{cmdName: cmdName}
+			return &utils.NotEnoughArgs{CmdName: cmdName}
 		}
 		cc.username = args[0]
 		return nil
 	case "/leave":
-		return &clientLeftError{username: cc.username}
+		return &utils.ClientLeftError{Username: cc.username}
 	}
 	return nil
 }

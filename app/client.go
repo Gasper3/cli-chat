@@ -40,7 +40,7 @@ type model struct {
 func (m model) Init() tea.Cmd {
 	m.writer.WriteString(fmt.Sprintf("/setusername::%s\n", m.username))
 	m.writer.Flush()
-	return tea.Batch(textarea.Blink, getMessage(m))
+	return tea.Sequence(tea.ClearScreen, textarea.Blink, getMessage(m))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

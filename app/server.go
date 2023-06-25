@@ -34,7 +34,7 @@ func RunServer() {
 	port := flag.String("p", "8000", "Application port")
 	flag.Parse()
 
-	fmt.Println("Listening on port " + *port)
+	log.Println("Listening on port " + *port)
 	listener, err := net.Listen("tcp", ":"+*port)
 	utils.HandleError(err)
 
@@ -45,7 +45,7 @@ func RunServer() {
 	for {
 		conn, err := listener.Accept()
 		utils.HandleError(err)
-		fmt.Println("New connection", conn.RemoteAddr().String())
+		log.Println("New connection", conn.RemoteAddr().String())
 
 		client := clientConn{
 			conn:      conn,
@@ -64,14 +64,12 @@ func handleClientConnection(cc *clientConn, clients *clientsMap) {
 	for {
 		msg, err := cc.reader.ReadString('\n')
 		if err != nil {
-			fmt.Println("Client disconnected:", cc.conn.RemoteAddr().String())
+			log.Println("Client disconnected:", cc.conn.RemoteAddr().String())
 			delete(*clients, cc.conn.RemoteAddr().String())
 			return
 		}
-		log.Println(fmt.Sprintf("<%s::%s>", cc.conn.RemoteAddr().String(), cc.username), msg)
 
 		if strings.HasPrefix(msg, "/") {
-			fmt.Println("handleClient", &cc)
 			err := handleCommand(msg, cc)
 			if e, ok := err.(*utils.ClientLeftError); ok {
 				delete(*clients, cc.conn.RemoteAddr().String())
@@ -88,7 +86,7 @@ func handleClientConnection(cc *clientConn, clients *clientsMap) {
 func broadcastMessage(cc clientConn, clients clientsMap, msg string) {
 	for _, c := range clients {
 		if c.conn != cc.conn {
-			c.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username, ":"), msg))
+			c.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username+":"), msg))
 			err := c.writer.Flush()
 			utils.HandleError(err)
 		}
@@ -118,13 +116,13 @@ func handleCommand(cmd string, cc *clientConn) error {
 }
 
 func closeListener(l *net.Listener) {
-	fmt.Println("Closing server")
+	log.Println("Closing server")
 	(*l).Close()
 }
 
 func cleanup(c chan os.Signal, quit chan int, listener *net.Listener) {
 	<-c
-	fmt.Println("\nExiting...")
+	log.Println("\nExiting...")
 	(*listener).Close()
 	os.Exit(0)
 }

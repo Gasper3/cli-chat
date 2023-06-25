@@ -51,7 +51,7 @@ func TestBroadcastMessage(t *testing.T) {
 		t.Error("Connection error", err)
 	}
 
-	client := clientConn{conn: conn, username: "Client"}
+	client := clientConn{conn: conn, username: "TestClient"}
 
 	var msgs []string
 	mock1 := writerMock{messages: msgs}
@@ -66,5 +66,9 @@ func TestBroadcastMessage(t *testing.T) {
 	}
 	if length := len(mock2.messages); length < 1 {
 		t.Errorf("Expected 1 message got: %s", fmt.Sprint(length))
+	}
+
+	if mock1.messages[0] != "TestClient: New Message" {
+		t.Errorf("Expected -> TestClient: New Message got %s", mock1.messages[0])
 	}
 }

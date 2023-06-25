@@ -44,7 +44,7 @@ func RunServer() {
 	colorNr := 1
 	for {
 		conn, err := listener.Accept()
-		utils.HandleError(err)
+		log.Println(err)
 		log.Println("New connection", conn.RemoteAddr().String())
 
 		client := clientConn{
@@ -56,30 +56,34 @@ func RunServer() {
 		colorNr++
 		clients[conn.RemoteAddr().String()] = &client
 
-		go handleClientConnection(&client, &clients)
+		go handleClientConnection(&client, clients)
 	}
 }
 
-func handleClientConnection(cc *clientConn, clients *clientsMap) {
+func handleClientConnection(cc *clientConn, clients clientsMap) {
 	for {
 		msg, err := cc.reader.ReadString('\n')
 		if err != nil {
-			log.Println("Client disconnected:", cc.conn.RemoteAddr().String())
-			delete(*clients, cc.conn.RemoteAddr().String())
-			return
+			if err.Error() == "EOF" {
+				log.Println("Client disconnected:", cc.conn.RemoteAddr().String())
+				delete(clients, cc.conn.RemoteAddr().String())
+				broadcastMessage(*cc, clients, fmt.Sprintf("%s disconnected", cc.username))
+				return
+			}
+			log.Println(err)
 		}
 
 		if strings.HasPrefix(msg, "/") {
 			err := handleCommand(msg, cc)
 			if e, ok := err.(*utils.ClientLeftError); ok {
-				delete(*clients, cc.conn.RemoteAddr().String())
-				broadcastMessage(*cc, *clients, fmt.Sprint(e))
+				delete(clients, cc.conn.RemoteAddr().String())
+				broadcastMessage(*cc, clients, fmt.Sprint(e))
 				return
 			}
 			continue
 		}
 
-		broadcastMessage(*cc, *clients, msg)
+		broadcastMessage(*cc, clients, msg)
 	}
 }
 
@@ -88,7 +92,7 @@ func broadcastMessage(cc clientConn, clients clientsMap, msg string) {
 		if c.conn != cc.conn {
 			c.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username+":"), msg))
 			err := c.writer.Flush()
-			utils.HandleError(err)
+			log.Println(err)
 		}
 	}
 }

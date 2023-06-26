@@ -38,7 +38,6 @@ func RunServer() {
 	listener, err := net.Listen("tcp", ":"+*port)
 	utils.HandleError(err)
 
-	defer closeListener(&listener)
 	go cleanup(sigChan, quit, &listener)
 
 	colorNr := 1
@@ -117,11 +116,6 @@ func handleCommand(cmd string, cc *clientConn) error {
 		return &utils.ClientLeftError{Username: cc.username}
 	}
 	return nil
-}
-
-func closeListener(l *net.Listener) {
-	log.Println("Closing server")
-	(*l).Close()
 }
 
 func cleanup(c chan os.Signal, quit chan int, listener *net.Listener) {

@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"chat-app/utils"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -22,11 +23,21 @@ type clientConn struct {
 	sendColor lipgloss.Style
 }
 
+func (cc *clientConn) formatedMessage(s string) string {
+	return fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username+":"), s)
+}
+
+func (cc *clientConn) sendToClient(s string) error {
+	s = prepareMessage(s)
+	cc.writer.WriteString(s)
+	err := cc.writer.Flush()
+	return err
+}
+
 type clientsMap map[string]*clientConn
 
 func RunServer() {
 	clients := make(clientsMap)
-	quit := make(chan int)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -38,12 +49,14 @@ func RunServer() {
 	listener, err := net.Listen("tcp", ":"+*port)
 	utils.HandleError(err)
 
-	go cleanup(sigChan, quit, &listener)
+	go cleanup(sigChan, &listener)
 
 	colorNr := 1
 	for {
 		conn, err := listener.Accept()
-		log.Println(err)
+		if err != nil {
+			log.Println(err)
+		}
 		log.Println("New connection", conn.RemoteAddr().String())
 
 		client := clientConn{
@@ -64,9 +77,7 @@ func handleClientConnection(cc *clientConn, clients clientsMap) {
 		msg, err := cc.reader.ReadString('\n')
 		if err != nil {
 			if err.Error() == "EOF" {
-				log.Println("Client disconnected:", cc.conn.RemoteAddr().String())
-				delete(clients, cc.conn.RemoteAddr().String())
-				broadcastMessage(*cc, clients, fmt.Sprintf("%s disconnected", cc.username))
+				disconectClient(cc, clients, fmt.Sprintf("%s disconnected", cc.username))
 				return
 			}
 			log.Println(err)
@@ -74,26 +85,42 @@ func handleClientConnection(cc *clientConn, clients clientsMap) {
 
 		if strings.HasPrefix(msg, "/") {
 			err := handleCommand(msg, cc)
-			if e, ok := err.(*utils.ClientLeftError); ok {
-				delete(clients, cc.conn.RemoteAddr().String())
-				broadcastMessage(*cc, clients, fmt.Sprint(e))
+			if e, ok := err.(*utils.ClientLeftError); ok && e != nil {
+				disconectClient(cc, clients, fmt.Sprint(e))
 				return
+			}
+			if err != nil {
+				cc.sendToClient(fmt.Sprint(err))
 			}
 			continue
 		}
 
-		broadcastMessage(*cc, clients, msg)
+		broadcastMessage(*cc, clients, cc.formatedMessage(msg))
 	}
 }
 
+func disconectClient(cc *clientConn, clients clientsMap, msg string) {
+	log.Println("Client disconnected:", cc.conn.RemoteAddr().String())
+	delete(clients, cc.conn.RemoteAddr().String())
+	broadcastMessage(*cc, clients, msg)
+}
+
 func broadcastMessage(cc clientConn, clients clientsMap, msg string) {
+	msg = prepareMessage(msg)
 	for _, c := range clients {
 		if c.conn != cc.conn {
-			c.writer.WriteString(fmt.Sprintf("%s %s", cc.sendColor.Render(cc.username+":"), msg))
-			err := c.writer.Flush()
-			log.Println(err)
+			if err := c.sendToClient(msg); err != nil {
+				log.Println("Broadcast flush error:", err)
+			}
 		}
 	}
+}
+
+func prepareMessage(msg string) string {
+	if !strings.HasSuffix(msg, "\n") {
+		msg = msg + "\n"
+	}
+	return msg
 }
 
 func handleCommand(cmd string, cc *clientConn) error {
@@ -110,6 +137,9 @@ func handleCommand(cmd string, cc *clientConn) error {
 		if len(parsedCmd) == 1 {
 			return &utils.NotEnoughArgs{CmdName: cmdName}
 		}
+		if cc.username != "" {
+			return errors.New("username already set")
+		}
 		cc.username = args[0]
 		return nil
 	case "/leave":
@@ -118,7 +148,7 @@ func handleCommand(cmd string, cc *clientConn) error {
 	return nil
 }
 
-func cleanup(c chan os.Signal, quit chan int, listener *net.Listener) {
+func cleanup(c chan os.Signal, listener *net.Listener) {
 	<-c
 	log.Println("\nExiting...")
 	(*listener).Close()

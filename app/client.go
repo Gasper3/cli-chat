@@ -65,6 +65,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			err := m.writer.Flush()
 			utils.HandleError(err)
 
+			if message == "/leave" {
+				return m, tea.Quit
+			}
+
 			m.messages = append(m.messages, m.senderStyle.Render("You: ")+wordwrap.String(message, vpWidth-5))
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.textarea.Reset()

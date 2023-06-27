@@ -68,7 +68,7 @@ func TestBroadcastMessage(t *testing.T) {
 		t.Errorf("Expected 1 message got: %s", fmt.Sprint(length))
 	}
 
-	if mock1.messages[0] != "TestClient: New Message" {
-		t.Errorf("Expected -> TestClient: New Message got %s", mock1.messages[0])
+	if mock1.messages[0] != "New Message\n" {
+		t.Errorf("Expected -> `New Message` got `%s`", mock1.messages[0])
 	}
 }

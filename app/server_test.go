@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -45,7 +46,7 @@ func FuzzHandleCommand(f *testing.F) {
 }
 
 func TestBroadcastMessage(t *testing.T) {
-	clients := make(clientsMap)
+	var clients sync.Map
 	conn, err := net.Dial("tcp", "127.0.0.1:8443")
 	if err != nil {
 		t.Error("Connection error", err)
@@ -57,15 +58,15 @@ func TestBroadcastMessage(t *testing.T) {
 	mock1 := writerMock{messages: msgs}
 	mock2 := writerMock{messages: msgs}
 
-	clients["client1"] = &clientConn{writer: *bufio.NewWriter(&mock1)}
-	clients["client2"] = &clientConn{writer: *bufio.NewWriter(&mock2)}
+	clients.Store("client1", &clientConn{writer: *bufio.NewWriter(&mock1)})
+	clients.Store("client2", &clientConn{writer: *bufio.NewWriter(&mock2)})
 
-	broadcastMessage(client, clients, "New Message")
+	broadcastMessage(client, &clients, "New Message")
 	if length := len(mock1.messages); length < 1 {
-		t.Errorf("Expected 1 message got: %s", fmt.Sprint(length))
+		t.Fatalf("Expected 1 message in mock1 got: %s", fmt.Sprint(length))
 	}
 	if length := len(mock2.messages); length < 1 {
-		t.Errorf("Expected 1 message got: %s", fmt.Sprint(length))
+		t.Fatalf("Expected 1 message in mock2 got: %s", fmt.Sprint(length))
 	}
 
 	if mock1.messages[0] != "New Message\n" {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -34,10 +35,8 @@ func (cc *clientConn) sendToClient(s string) error {
 	return err
 }
 
-type clientsMap map[string]*clientConn
-
 func RunServer() {
-	clients := make(clientsMap)
+	var clients sync.Map
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -57,8 +56,8 @@ func RunServer() {
 		if err != nil {
 			log.Println(err)
 		}
-		log.Println("New connection", conn.RemoteAddr().String())
 
+		log.Println("New connection", conn.RemoteAddr().String())
 		client := clientConn{
 			conn:      conn,
 			writer:    *bufio.NewWriter(conn),
@@ -66,15 +65,17 @@ func RunServer() {
 			sendColor: lipgloss.NewStyle().Foreground(lipgloss.Color(fmt.Sprint(colorNr))),
 		}
 		colorNr++
-		clients[conn.RemoteAddr().String()] = &client
 
-		go handleClientConnection(&client, clients)
+		clients.Store(conn.RemoteAddr().String(), &client)
+
+		go handleClientConnection(&client, &clients)
 	}
 }
 
-func handleClientConnection(cc *clientConn, clients clientsMap) {
+func handleClientConnection(cc *clientConn, clients *sync.Map) {
 	for {
 		msg, err := cc.reader.ReadString('\n')
+
 		if err != nil {
 			if err.Error() == "EOF" {
 				disconectClient(cc, clients, fmt.Sprintf("%s disconnected", cc.username))
@@ -99,21 +100,22 @@ func handleClientConnection(cc *clientConn, clients clientsMap) {
 	}
 }
 
-func disconectClient(cc *clientConn, clients clientsMap, msg string) {
+func disconectClient(cc *clientConn, clients *sync.Map, msg string) {
 	log.Println("Client disconnected:", cc.conn.RemoteAddr().String())
-	delete(clients, cc.conn.RemoteAddr().String())
+	clients.Delete(cc.conn.RemoteAddr().String())
 	broadcastMessage(*cc, clients, msg)
 }
 
-func broadcastMessage(cc clientConn, clients clientsMap, msg string) {
+func broadcastMessage(cc clientConn, clients *sync.Map, msg string) {
 	msg = prepareMessage(msg)
-	for _, c := range clients {
-		if c.conn != cc.conn {
+	clients.Range(func(key any, value any) bool {
+		if c, ok := value.(*clientConn); ok && c.conn != cc.conn {
 			if err := c.sendToClient(msg); err != nil {
 				log.Println("Broadcast flush error:", err)
 			}
 		}
-	}
+		return true
+	})
 }
 
 func prepareMessage(msg string) string {

@@ -32,15 +32,26 @@ type model struct {
 	senderStyle   lipgloss.Style
 	receiverStyle lipgloss.Style
 	conn          net.Conn
-	reader        bufio.Reader
-	writer        bufio.Writer
+	connReader    bufio.Reader
+	connWriter    bufio.Writer
 	err           error
 }
 
+func (m model) formatSendMessage(msg string) string {
+	return m.senderStyle.Render("You: ") + wordwrap.String(msg, vpWidth-5)
+}
+
+func (m *model) appendToViewport(msg string) {
+	m.messages = append(m.messages, msg)
+	m.viewport.SetContent(strings.Join(m.messages, "\n"))
+	m.textarea.Reset()
+	m.viewport.GotoBottom()
+}
+
 func (m model) Init() tea.Cmd {
-	m.writer.WriteString(fmt.Sprintf("/setusername::%s\n", m.username))
-	m.writer.Flush()
-	return tea.Sequence(tea.ClearScreen, textarea.Blink, getMessage(m))
+	m.connWriter.WriteString(fmt.Sprintf("/setusername::%s\n", m.username))
+	m.connWriter.Flush()
+	return tea.Sequence(tea.ClearScreen, textarea.Blink, getMessageCmd(m))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -61,29 +72,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			message := m.textarea.Value()
 
-			m.writer.WriteString(message + "\n")
-			err := m.writer.Flush()
-			utils.HandleError(err)
+			m.connWriter.WriteString(message + "\n")
+			err := m.connWriter.Flush()
+			utils.FatalOnError(err)
 
 			if message == "/leave" {
 				return m, tea.Quit
 			}
 
-			m.messages = append(m.messages, m.senderStyle.Render("You: ")+wordwrap.String(message, vpWidth-5))
-			m.viewport.SetContent(strings.Join(m.messages, "\n"))
-			m.textarea.Reset()
-			m.viewport.GotoBottom()
+			m.appendToViewport(m.formatSendMessage(message))
 		}
 	case errMsg:
 		m.err = msg
 		return m, nil
 	case srvMessageMsg:
-		m.messages = append(m.messages, string(msg))
-		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		m.viewport.GotoBottom()
+		m.appendToViewport(string(msg))
 	}
 
-	return m, tea.Batch(taCmd, vpCmd, getMessage(m))
+	return m, tea.Batch(taCmd, vpCmd, getMessageCmd(m))
 }
 
 func (m model) View() string {
@@ -92,7 +98,7 @@ func (m model) View() string {
 
 func InitialModel(username string) model {
 	c, err := connectToServer()
-	utils.HandleError(err)
+	utils.FatalOnError(err)
 
 	ta := textarea.New()
 	ta.Placeholder = "Send a message"
@@ -121,8 +127,8 @@ func InitialModel(username string) model {
 		senderStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
 		receiverStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
 		conn:          c,
-		reader:        *bufio.NewReader(c),
-		writer:        *bufio.NewWriter(c),
+		connReader:    *bufio.NewReader(c),
+		connWriter:    *bufio.NewWriter(c),
 		err:           nil,
 	}
 }
@@ -135,9 +141,9 @@ func connectToServer() (net.Conn, error) {
 	return net.Dial("tcp", *addr+":"+*port)
 }
 
-func getMessage(m model) tea.Cmd {
+func getMessageCmd(m model) tea.Cmd {
 	return func() tea.Msg {
-		msg, err := m.reader.ReadString('\n')
+		msg, err := m.connReader.ReadString('\n')
 		if err != nil {
 			return tea.Quit
 		}

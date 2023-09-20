@@ -46,13 +46,14 @@ func RunServer() {
 
 	log.Println("Listening on port " + *port)
 	listener, err := net.Listen("tcp", ":"+*port)
-	utils.HandleError(err)
+	utils.FatalOnError(err)
 
 	go cleanup(sigChan, &listener)
 
 	colorNr := 1
 	for {
 		conn, err := listener.Accept()
+
 		if err != nil {
 			log.Println(err)
 		}
